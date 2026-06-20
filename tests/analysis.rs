@@ -37,6 +37,29 @@ fn no_overflow_when_buffer_fits() {
     assert_eq!(r.total_holes(), 0, "no overflow expected");
 }
 
+/// C drops the terminating NUL when a string literal exactly fills the array
+/// it initializes (C11 6.7.9p14), so `char d[N] = "<N chars>"` is *not* an
+/// overflow. (The original BOON flagged every such buffer; this port does not.)
+#[test]
+fn exact_fit_literal_init_is_clean() {
+    let r = run(r#"
+        void f() {
+            char digits[16] = "0123456789ABCDEF";
+            char snd[9] = "123456789";
+        }
+    "#);
+    assert_eq!(r.total_holes(), 0, "exactly-fitting literal init is legal C");
+}
+
+/// A literal initializer that leaves room keeps its NUL and is also clean.
+#[test]
+fn fitting_literal_init_is_clean() {
+    let r = run(r#"
+        void f() { char buf[20] = "hello"; }
+    "#);
+    assert_eq!(r.total_holes(), 0);
+}
+
 /// `gethostbyname()`'s result has unbounded length, so copying it into a
 /// fixed buffer is flagged with `len = ..+Infinity` (the classic example).
 #[test]

@@ -1,10 +1,12 @@
 # boon-rs
 
-A Rust port of **BOON**, David Wagner's static analyzer for finding buffer
-overrun vulnerabilities in C, originally written in Standard ML (the source is
-in [`boon-1.0/`](boon-1.0/)). This port keeps the original analysis faithful but
-replaces the hand-written C parser with [tree-sitter-c], and reimplements the
-external C range solver (`newsolver.c`) directly in Rust.
+Originally ported from **BOON**, David Wagner's static analyzer for finding
+buffer overrun vulnerabilities in C, written in Standard ML (the source is in
+[`boon-1.0/`](boon-1.0/)). The port replaces the hand-written C parser with
+[tree-sitter-c] and reimplements the external C range solver (`newsolver.c`)
+directly in Rust. It began as a faithful reproduction of the original analysis
+and has since been **modified to improve its precision** — see
+[Improvements over the original](#improvements-over-the-original) below.
 
 > BOON models every C string as a pair of integers — `alloc` (bytes allocated)
 > and `len` (bytes used, including the NUL) — generates range constraints over
@@ -243,9 +245,27 @@ by side. Each module documents the `*.sml` file it corresponds to.
   special case are all ported from `walk.sml`. See `boon-1.0/TIPS` for how to
   read the output and why merging produces conservative results.
 
+## Improvements over the original
+
+Where the port departs from BOON's behavior, it does so to fix a genuine
+imprecision, not to change the analysis's character. Each departure is called out
+here so results can still be compared against the original.
+
+- **String-literal array initialization (`char a[N] = "..."`).** C drops the
+  terminating NUL when a string literal's characters exactly fill the array it
+  initializes (C11 §6.7.9p14), so `char digits[16] = "0123456789ABCDEF"` stores
+  16 bytes, not 17. The original BOON always added the NUL (`slen = 1 + size
+  str` in `walk.sml`), so it reported a guaranteed off-by-one on *every*
+  exactly-fitting buffer — lookup tables and fixed data buffers included. This
+  port instead models the bytes written as `min(strlen+1, N)` at the
+  declaration site (`do_init` in `walk.rs`), which clears that false positive
+  while still flagging real overruns (e.g. `strcpy` of a too-long literal). On a
+  full Linux-kernel scan this eliminated the entire "Almost certainly a buffer
+  overflow" tier, which was 100% false positives of exactly this form.
+
 ## Limitations
 
-This is a faithful port of a research prototype, and inherits its limitations
+The port inherits the limitations of the research prototype it is based on
 (no `memset`/`memcpy`/loop modelling, no `wchar_t`, flow-insensitive merging),
 plus a couple of porting ones: pre-ANSI K&R definitions with explicitly-typed
 parameter lists declared in the old style are only partially recovered, and

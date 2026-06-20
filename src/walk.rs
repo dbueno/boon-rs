@@ -1076,9 +1076,25 @@ impl Walker {
 
     fn do_init(&mut self, ty: &CType, var_ctx: &Ctx, init_expr: &Expr, src: &Ctx) {
         match (&ty.spec, ty.derivs.as_slice()) {
-            (Spec::Char, [Deriv::Array(Some(_))]) => {
-                // char a[N] = "...": only the length flows.
-                self.assign_init(var_ctx, src);
+            (Spec::Char, [Deriv::Array(Some(n))]) => {
+                // char a[N] = "...": the initializer copies at most N bytes
+                // into the array. C drops the terminating NUL when the
+                // literal's characters exactly fill the array (C11 6.7.9p14),
+                // so `char d[16] = "0123456789ABCDEF"` stores 16 bytes, not 17.
+                // Model the bytes written as `min(strlen+1, N)` instead of
+                // blindly flowing the literal's `strlen+1`, which would report
+                // a spurious off-by-one on every exactly-fitting buffer.
+                // (A literal longer than the array — `strlen >= N` — is
+                // truncated by the compiler, which already warns; we clamp to N
+                // rather than re-flag it here.)
+                if let (Ctx::Str { len: vl, .. }, Expr::StrConst(s)) = (var_ctx, init_expr) {
+                    let written = std::cmp::min((s.chars().count() as i64) + 1, *n);
+                    self.sys.subset(&Term::constant(written), vl);
+                } else {
+                    // Non-literal initializer (e.g. another buffer): the
+                    // declared size bounds the buffer, so only the length flows.
+                    self.assign_init(var_ctx, src);
+                }
             }
             (Spec::Char, [Deriv::Array(None)]) => {
                 // char a[] = "...": the array size equals the string size.
