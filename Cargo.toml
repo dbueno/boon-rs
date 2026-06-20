@@ -1,6 +1,13 @@
 [package]
 name = "boon-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "A Rust port of BOON, a static buffer-overrun detector for C, using tree-sitter-c for parsing."
+
+[[bin]]
+name = "boon"
+path = "src/main.rs"
 
 [dependencies]
+tree-sitter = "0.22"
+tree-sitter-c = "0.21"
