@@ -263,13 +263,27 @@ here so results can still be compared against the original.
   full Linux-kernel scan this eliminated the entire "Almost certainly a buffer
   overflow" tier, which was 100% false positives of exactly this form.
 
+- **`sizeof`-based array dimensions (`char buf[3*sizeof(x)+2]`).** A `sizeof`
+  expression is a compile-time constant, but the parser originally could not
+  evaluate it, so such a declaration was treated as a non-constant VLA whose
+  allocation went unseeded — and when combined with a `= ""` initializer the
+  allocation collapsed to one byte, producing a spurious overflow against any
+  `sizeof`-sized length argument (e.g. `fgets(buf, sizeof-expr, …)`). The parser
+  now evaluates `sizeof` in array dimensions (`const_int` in `parse.rs`, using
+  the same `char=1, int=4, real=8` model as `walk::sizeof_type`), so the array's
+  allocation and a matching `sizeof` length argument are sized consistently. In
+  the differential test against the original this removed 120 of 121 Juliet
+  disagreements (the original evaluates `sizeof` too) with no regressions.
+
 ## Limitations
 
 The port inherits the limitations of the research prototype it is based on
 (no `memset`/`memcpy`/loop modelling, no `wchar_t`, flow-insensitive merging),
 plus a couple of porting ones: pre-ANSI K&R definitions with explicitly-typed
 parameter lists declared in the old style are only partially recovered, and
-non-constant array sizes (VLAs) are not seeded with a size constraint. Real
+genuinely runtime-sized array dimensions (true VLAs — `char buf[n]` for a
+variable `n`) are not seeded with a size constraint. (Constant dimensions,
+including `sizeof` expressions, *are* evaluated — see Improvements above.) Real
 system headers are not parseable; use `--nostdinc -I cstubs`.
 
 ## License

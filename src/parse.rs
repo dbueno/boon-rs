@@ -7,6 +7,8 @@
 
 use crate::ast::*;
 use crate::ctype::{CType, Deriv, Spec, Storage};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Parse C `source` into a [`Program`]. Returns `None` if tree-sitter fails to
@@ -20,6 +22,7 @@ pub fn parse_program(source: &str) -> Option<Program> {
     let tree = parser.parse(&source, None)?;
     let p = Parser {
         src: source.as_bytes(),
+        scope: RefCell::new(HashMap::new()),
     };
     let mut decls = Vec::new();
     let root = tree.root_node();
@@ -32,6 +35,11 @@ pub fn parse_program(source: &str) -> Option<Program> {
 
 struct Parser<'a> {
     src: &'a [u8],
+    /// Names → declared type, accumulated in source order, so `const_int` can
+    /// evaluate `sizeof(var)` in array dimensions (e.g. `char buf[3*sizeof(x)+2]`).
+    /// C requires declaration before use, so a flat map populated as we parse is
+    /// sufficient for the constant-expression contexts that consult it.
+    scope: RefCell<HashMap<String, CType>>,
 }
 
 /// Pre-ANSI C allows an omitted return type (implicit `int`), e.g.
@@ -205,6 +213,9 @@ impl<'a> Parser<'a> {
                 }
                 // else: a function-pointer variable -> fall through as a var.
             }
+            self.scope
+                .borrow_mut()
+                .insert(name.clone(), ctype.clone());
             out.push(TopDecl::Var(VarDecl {
                 name,
                 ctype,
@@ -493,14 +504,15 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            params.push(Param {
-                name,
-                ctype: CType {
-                    storage,
-                    spec: spec.clone(),
-                    derivs,
-                },
-            });
+            let ctype = CType {
+                storage,
+                spec: spec.clone(),
+                derivs,
+            };
+            if let Some(ref nm) = name {
+                self.scope.borrow_mut().insert(nm.clone(), ctype.clone());
+            }
+            params.push(Param { name, ctype });
         }
         params
     }
@@ -897,6 +909,55 @@ impl<'a> Parser<'a> {
                     _ => None,
                 }
             }
+            "sizeof_expression" => self.eval_sizeof(n),
+            _ => None,
+        }
+    }
+
+    /// Evaluate `sizeof(...)` as a constant when used in an array dimension.
+    /// Mirrors `walk::sizeof_type` exactly (char=1, int=4, real=8; pointers and
+    /// other aggregates punt) so the array's allocation and a matching
+    /// `sizeof`-based length argument (e.g. `fgets(buf, sizeof-expr, ...)`) are
+    /// sized from the *same* model — otherwise a `char buf[sizeof-expr] = ""`
+    /// would be treated as an unsized VLA and flagged as a spurious overflow.
+    fn eval_sizeof(&self, n: Node) -> Option<i64> {
+        // `sizeof(type)` exposes the type via the "type" field.
+        if let Some(t) = n.child_by_field_name("type") {
+            let ct = self.type_descriptor(t, &mut Vec::new());
+            return self.sizeof_of_ctype(&ct);
+        }
+        // Otherwise the operand is an expression ("value" field).
+        let v = n.child_by_field_name("value")?;
+        let inner = if v.kind() == "parenthesized_expression" {
+            v.named_child(0).unwrap_or(v)
+        } else {
+            v
+        };
+        match inner.kind() {
+            // tree-sitter parses `sizeof(int)+2` as `sizeof((int)+2)` — a cast;
+            // the size is that of the cast's target type.
+            "cast_expression" => {
+                let t = inner.child_by_field_name("type")?;
+                let ct = self.type_descriptor(t, &mut Vec::new());
+                self.sizeof_of_ctype(&ct)
+            }
+            // `sizeof(var)`: look the variable's declared type up in scope.
+            "identifier" => {
+                let ct = self.scope.borrow().get(&self.text(inner)).cloned()?;
+                self.sizeof_of_ctype(&ct)
+            }
+            _ => None,
+        }
+    }
+
+    fn sizeof_of_ctype(&self, ct: &CType) -> Option<i64> {
+        if !ct.derivs.is_empty() {
+            return None; // pointer/array/function: platform-dependent; punt.
+        }
+        match ct.spec {
+            Spec::Char => Some(1),
+            Spec::Int => Some(4),
+            Spec::Real => Some(8),
             _ => None,
         }
     }
