@@ -48,6 +48,44 @@ Run the test suite (a handful of end-to-end checks of the analysis):
 cargo test --release
 ```
 
+## Reproducible builds and differential tests with Nix
+
+The repository is a Nix flake. Everything needed to reproduce the analyzer
+*and* the differential test against David Wagner's original SML BOON is pinned:
+boon-rs builds from the locked `Cargo.lock`, the original BOON is fetched from
+its upstream tarball (`boon-1.0.tar.gz`, pinned by hash) and patched/built
+in-tree (see `nix/boon-orig.nix`), and the Juliet corpus is a pinned flake
+input (`arichardson/juliet-test-suite-c`).
+
+```sh
+# the analyzer (Rust port)
+nix build .#boon            # -> result/bin/boon
+
+# the original SML BOON, built reproducibly from the upstream tarball
+nix build .#boon-orig       # -> result/bin/boon-orig <file.i ...>
+
+# both differential tests (examples must be identical; Juliet must agree >=99.9%)
+nix flake check
+```
+
+> The original BOON needs SML/NJ, which nixpkgs only provides for x86_64. On
+> Apple Silicon it builds and runs the x86_64 `sml` via **Rosetta 2** (`nix`
+> only needs `extra-platforms = x86_64-darwin` to *run* it, not to build native
+> derivations). On `aarch64-linux` SML/NJ is unavailable, so `boon-orig` and the
+> checks are omitted there.
+
+The two checks are:
+
+- **`checks.examples`** — preprocesses the five bundled example programs with the
+  shared `cstubs` + typedef prelude and asserts boon-rs and the original report
+  *identical* findings (5/5).
+- **`checks.juliet`** — runs the full CWE121/122/124/126/127 corpus (14,734
+  files) through both tools under `OMITGOOD`/`OMITBAD`, and fails unless they
+  agree on ≥ 99.9% of comparable variants (variants the original errors on —
+  `wchar_t` etc. — are excluded, per `difftest/REPORT.md`). This is a long run
+  (tens of thousands of SML invocations); build it on its own with
+  `nix build .#checks.<system>.juliet`.
+
 ## Running boon on C files
 
 ```

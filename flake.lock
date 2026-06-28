@@ -22,6 +22,23 @@
         "type": "github"
       }
     },
+    "juliet": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1743110716,
+        "narHash": "sha256-eYchwPZuDrzwxWzzpOkovG2wZ7A2lSWklAvFwJG8tWY=",
+        "owner": "arichardson",
+        "repo": "juliet-test-suite-c",
+        "rev": "f88433e3443648a17671398797a04ea1f8e1a274",
+        "type": "github"
+      },
+      "original": {
+        "owner": "arichardson",
+        "repo": "juliet-test-suite-c",
+        "rev": "f88433e3443648a17671398797a04ea1f8e1a274",
+        "type": "github"
+      }
+    },
     "naersk": {
       "inputs": {
         "fenix": "fenix",
@@ -76,6 +93,7 @@
     },
     "root": {
       "inputs": {
+        "juliet": "juliet",
         "naersk": "naersk",
         "nixpkgs": "nixpkgs_2",
         "utils": "utils"

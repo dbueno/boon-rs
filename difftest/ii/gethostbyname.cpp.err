@@ -1,0 +1,4 @@
+boon-1.0/examples/gethostbyname.c:7:36: warning: '/*' within block comment [-Wcomment]
+    7 | /* #define h_addr  h_addr_list[0]  /* address, for backward compatiblity */
+      |                                    ^
+1 warning generated.

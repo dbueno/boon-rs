@@ -1,0 +1,228 @@
+diff -ruN a/bane/CParser/sources.cm b/bane/CParser/sources.cm
+--- a/bane/CParser/sources.cm	2026-06-21 12:20:01.657445000 -0600
++++ b/bane/CParser/sources.cm	2026-06-21 12:20:01.691083565 -0600
+@@ -43,7 +43,8 @@
+ 
+         ../Lib/sources.cm
+ 
+-	ml-yacc-lib.cm
+-	smlnj-lib.cm
++	$/basis.cm
++	$/ml-yacc-lib.cm
++	$/smlnj-lib.cm
+ 
+ 	../PAM-3/sources.cm
+diff -ruN a/bane/CParser/top.sml b/bane/CParser/top.sml
+--- a/bane/CParser/top.sml	2026-06-21 12:20:01.658035000 -0600
++++ b/bane/CParser/top.sml	2026-06-21 12:20:01.696040909 -0600
+@@ -46,14 +46,7 @@
+ fun parse fileName = applyToFile CParser.parse fileName
+ val unparse = CParser.Unparse.program
+ 
+-fun isSuffix suf s =
+-    let open List String
+-	val revStr = implode o rev o explode
+-	val sufRev = revStr suf
+-	val sRev = revStr s
+-    in
+-	isPrefix sufRev sRev
+-    end
++fun isSuffix suf s = String.isSuffix suf s
+ 
+ fun parseIDir filename =
+     let val allFiles = FileUtil.flattenDir filename
+diff -ruN a/bane/Lib/file-util.sml b/bane/Lib/file-util.sml
+--- a/bane/Lib/file-util.sml	2026-06-21 12:20:01.659271000 -0600
++++ b/bane/Lib/file-util.sml	2026-06-21 12:20:01.700868689 -0600
+@@ -60,7 +60,7 @@
+ 		(let val dir = openDir filename
+ 		 in
+ 		     let val fileList = buildFileList filename
+-			 (fn () => readDir dir)
++			 (fn () => case readDir dir of NONE => "" | SOME s => s)
+ 		     in
+ 			 closeDir dir;
+ 			 fileList
+diff -ruN a/bane/Lib/sources.cm b/bane/Lib/sources.cm
+--- a/bane/Lib/sources.cm	2026-06-21 12:20:01.661334000 -0600
++++ b/bane/Lib/sources.cm	2026-06-21 12:20:01.705428668 -0600
+@@ -49,22 +49,12 @@
+ 
+ 	 file-util.sml
+ 
+-	 smlnj-lib.cm
++	 $/basis.cm
++	 $/smlnj-lib.cm
+ 
+ 
+          (* Memusage stuff *)
+ 	 info.sig
+-# if ( defined(OPSYS_UNIX) && defined(ARCH_SPARC) )
+-	 solarisinfo.sml
+-# elif ( defined(OPSYS_UNIX) && defined(ARCH_X86) )
+-	 linuxinfo.sml
+-# else
+          dummyinfo.sml
+-(* #        error This code only works for Solaris and Linux. *)
+-# endif
+-(*
+-	 sockets.sml 
+-         memusage.sml
+-*)
+ 	 memusage2.sml   (* does not use sockets *)
+ 
+diff -ruN a/bane/PAM-3/pam-3.sml b/bane/PAM-3/pam-3.sml
+--- a/bane/PAM-3/pam-3.sml	2026-06-21 12:20:01.662719000 -0600
++++ b/bane/PAM-3/pam-3.sml	2026-06-21 12:20:01.709957174 -0600
+@@ -333,10 +333,10 @@
+ 				  user_send_analysis_by_filename, user_send_entire_analysis,info}) =
+ 
+ 	 let
+-	    val name = TextIO.inputLine streamIn
+-	    val file = TextIO.inputLine streamIn
++	    val name = getOpt(TextIO.inputLine streamIn, "")
++	    val file = getOpt(TextIO.inputLine streamIn, "")
+ 	    val file' = String.substring(file, 0, String.size(file)-1)
+-	    val typ = TextIO.inputLine streamIn
++	    val typ = getOpt(TextIO.inputLine streamIn, "")
+ 	    val window = if typ = "buffer" then VirtualWindow file' else RealWindow file'
+ 
+ 	    (*val _ = send_debug (streamOut, file' ^ " with type " ^ typ)*)
+@@ -358,14 +358,14 @@
+       and read_file (env as Env {user_send_analysis_by_filename, user_send_entire_analysis,
+ 				    streamIn, ...}) =
+ 	 let
+-	    val filename = TextIO.inputLine streamIn
++	    val filename = getOpt(TextIO.inputLine streamIn, "")
+ 	    val real_name = String.substring(filename, 0, String.size(filename)-1)
+ 	 in
+ 	    (loop_until_done o (user_send_analysis_by_filename real_name)) env
+ 	 end
+       and loop_until_done (env as (Env {streamOut,streamIn, ...})) =
+ 	 let
+-	    val next_value = TextIO.inputLine streamIn
++	    val next_value = getOpt(TextIO.inputLine streamIn, "")
+ 	 in
+ 	    case next_value of
+ 	       "click\n" => read_click env
+diff -ruN a/bane/PAM-3/sources.cm b/bane/PAM-3/sources.cm
+--- a/bane/PAM-3/sources.cm	2026-06-21 12:20:01.664018000 -0600
++++ b/bane/PAM-3/sources.cm	2026-06-21 12:20:01.714728467 -0600
+@@ -23,5 +23,6 @@
+ is
+ 	pam-3.sig
+ 	pam-3.sml
+-	smlnj-lib.cm
++	$/basis.cm
++	$/smlnj-lib.cm
+ 	../Lib/sources.cm
+\ No newline at end of file
+diff -ruN a/constraint-set.sml b/constraint-set.sml
+--- a/constraint-set.sml	2026-06-21 12:20:01.653040000 -0600
++++ b/constraint-set.sml	2026-06-21 12:20:01.719360399 -0600
+@@ -186,7 +186,7 @@
+        if there is a bound on the value of the objective function,
+        or NONE otherwise. *)
+     fun getBounds output =
+-          let val (_,suf) = Substring.position feasible (Substring.all output)
++          let val (_,suf) = Substring.position feasible (Substring.full output)
+               fun toEndpoint "+Infinity" = Infinity
+                 | toEndpoint "-Infinity" = NegativeInfinity
+                 | toEndpoint s = (case (Int.fromString s) of
+diff -ruN a/newsolver.c b/newsolver.c
+--- a/newsolver.c	2026-06-21 12:20:01.654590000 -0600
++++ b/newsolver.c	2026-06-21 12:20:01.724022429 -0600
+@@ -13,8 +13,18 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <assert.h>
+-#include <values.h>
+ #include <limits.h>
++/* values.h is a legacy SunOS/Linux header absent on macOS; map the few
++   macros newsolver.c uses to their <limits.h> equivalents. */
++#ifndef MAXSHORT
++#define MAXSHORT SHRT_MAX
++#endif
++#ifndef MAXLONG
++#define MAXLONG LONG_MAX
++#endif
++#ifndef MINLONG
++#define MINLONG LONG_MIN
++#endif
+ #include <string.h>
+ #include <ctype.h>
+ 
+diff -ruN a/sources.cm b/sources.cm
+--- a/sources.cm	2026-06-21 12:20:01.654471000 -0600
++++ b/sources.cm	2026-06-21 12:20:01.728519336 -0600
+@@ -19,8 +19,6 @@
+ (* bane/Bane/sources.cm *)
+ bane/Lib/sources.cm
+ 
+-(* EDIT ME:
+-   replace /usr/share/smlnj/lib/ with the directory
+-   where the SML/NJ basis libraries live on your system. *)
+-/usr/share/smlnj/lib/smlnj-lib.cm
+-/usr/share/smlnj/lib/unix-lib.cm
++$/basis.cm
++$/smlnj-lib.cm
++$/unix-lib.cm
+diff -ruN a/util.sml b/util.sml
+--- a/util.sml	2026-06-21 12:20:01.654171000 -0600
++++ b/util.sml	2026-06-21 12:20:01.732996732 -0600
+@@ -141,14 +141,7 @@
+ 	  | safeTail (x::xs) = xs
+ 
+ 	(* Return true iff suf is a suffix of s *)
+-	fun isSuffix suf s =
+-	    let open List String
+-		val revStr = implode o rev o explode
+-		val sufRev = revStr suf
+-		val sRev = revStr s
+-	    in
+-		isPrefix sufRev sRev
+-	    end
++	fun isSuffix suf s = String.isSuffix suf s
+ 
+ 	(* Remove suffix suf from s, if it exists *)
+ 	fun stripSuffix suf s =
+@@ -336,7 +329,7 @@
+ 		let val dir = OS.FileSys.openDir filename
+ 		    val fileList =
+ 			build_file_list (filename ^ "/")
+-			                (fn () => OS.FileSys.readDir dir)
++			                (fn () => case OS.FileSys.readDir dir of NONE => "" | SOME s => s)
+ 		in
+ 		    OS.FileSys.closeDir dir;
+ 		    fileList
+@@ -407,7 +400,8 @@
+ 
+ 	fun accumTime() =
+ 	    let open Time Timer
+-		val {gc,sys,usr} = checkCPUTimer (!timer)
++		val {sys,usr} = checkCPUTimer (!timer)
++		val gc = checkGCTime (!timer)
+ 		val {gc=gc_old,sys=sys_old,usr=usr_old} = !time_so_far
+ 	    in
+ 		time_so_far := {gc=gc_old+gc,
+diff -ruN a/walk.sml b/walk.sml
+--- a/walk.sml	2026-06-21 12:20:01.654338000 -0600
++++ b/walk.sml	2026-06-21 12:20:01.737297708 -0600
+@@ -462,7 +462,7 @@
+                          ((dst as Str {siz=ds,len=dl})::_::rest) =
+               let val fmt = getStr fmtId
+                   val _ = debug ("sprintf(.,\""^fmt^"\",...).")
+-                  val parsedLen = parseFmt (Substring.all fmt) rest
++                  val parsedLen = parseFmt (Substring.full fmt) rest
+               in
+                   parsedLen subset' dl;
+                   dst
+@@ -480,7 +480,7 @@
+                                  ^(case nt of Int(n) => Constraint.toString n
+                                               | _ => "(??)")
+                                  ^",\""^fmt^"\",...).")
+-                  val parsedLen = parseFmt (Substring.all fmt) rest
++                  val parsedLen = parseFmt (Substring.full fmt) rest
+               in
+                   case nt of
+                       Int(n) => (min' (parsedLen,n)) subset' dl

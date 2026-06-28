@@ -1,0 +1,1 @@
+SLIGHT | msg@fatal() | 5..7 bytes allocated, 5..7 bytes used

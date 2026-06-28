@@ -1,0 +1,2 @@
+POSSIBLE | name@resolve() | 128..128 bytes allocated, 1..+Infinity bytes used
+POSSIBLE | name@rresolve() | 64..64 bytes allocated, 1..+Infinity bytes used

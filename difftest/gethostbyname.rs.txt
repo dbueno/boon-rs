@@ -1,0 +1,1 @@
+POSSIBLE | hname@main() | 256..256 bytes allocated, 1..+Infinity bytes used
